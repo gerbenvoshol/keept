@@ -36,6 +36,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/wait.h>
+#include <dirent.h>
 
 #include <sys/uio.h> // writev()
 #include <sys/ioctl.h>
@@ -128,6 +129,7 @@ static void usage(const char * prgname, int more)
 		"     x: resize attach window using escape sequence" nl
 		"     t: attach even without local tty (on fd 0)" nl
 		"     z: send ctrl-z when attaching" nl
+		"     L: list sessions (socket arg is directory or glob pattern)" nl
 #if HAVE_ABSTRACT_SOCKET_NAMESPACE
 		"     @: use socket in abstract namespace" nl
 		"     u: remove pathname socket at the end" nl
@@ -143,7 +145,8 @@ static void usage(const char * prgname, int more)
     else
 	fprintf(stderr, "e.g.\n"
 		"  keept bm keept-sock -o keept-log /bin/sh\n"
-		"  keept ar keept-sock\n\n"
+		"  keept ar keept-sock\n"
+		"  keept L .\n\n"
 		"Enter '%s help' for more information. \n\n", prgname);
     exit(1);
 }
@@ -853,6 +856,75 @@ _exit:
     exit(0);
 }
 
+static void list_sessions(const char * path BOOL_ABSTRACT_SOCKET)
+{
+#if HAVE_ABSTRACT_SOCKET_NAMESPACE
+    if (abstract_socket) {
+	fprintf(stderr, "Listing abstract namespace sockets not supported\n");
+	exit(1);
+    }
+#endif
+    
+    // Check if path is a directory
+    struct stat st;
+    if (stat(path, &st) < 0) {
+	fprintf(stderr, "Cannot access '%s': %s\n", path, strerror(errno));
+	exit(1);
+    }
+    
+    DIR * dir;
+    const char * search_dir;
+    
+    if (S_ISDIR(st.st_mode)) {
+	dir = opendir(path);
+	search_dir = path;
+    } else {
+	// If not a directory, try parent directory
+	fprintf(stderr, "'%s' is not a directory\n", path);
+	exit(1);
+    }
+    
+    if (dir == null) {
+	fprintf(stderr, "Cannot open directory '%s': %s\n", 
+		search_dir, strerror(errno));
+	exit(1);
+    }
+    
+    fprintf(stderr, "Active keept sessions:\n");
+    int found = 0;
+    
+    struct dirent * entry;
+    while ((entry = readdir(dir)) != null) {
+	if (entry->d_name[0] == '.') continue;
+	
+	// Build full path
+	char fullpath[4096];
+	int len = snprintf(fullpath, sizeof fullpath, "%s/%s",
+			   search_dir, entry->d_name);
+	if (len >= (int)sizeof fullpath) continue;
+	
+	// Check if it's a socket
+	if (stat(fullpath, &st) < 0) continue;
+	if (! S_ISSOCK(st.st_mode)) continue;
+	
+	// Try to connect to see if it's live
+	int s = connect_usock(fullpath OPTARG_ABSTRACT_SOCKET);
+	if (s >= 0) {
+	    found++;
+	    fprintf(stderr, "  %s\n", fullpath);
+	    close(s);
+	}
+    }
+    
+    closedir(dir);
+    
+    if (found == 0)
+	fprintf(stderr, "  (no active sessions found)\n");
+    
+    exit(0);
+}
+
+
 
 int main(int argc, char * argv[])
 {
@@ -862,6 +934,7 @@ int main(int argc, char * argv[])
     bool attach_only = false;
     bool no_attach = false;
     bool must_create = false;
+    bool list_sessions_mode = false;
 #if HAVE_ABSTRACT_SOCKET_NAMESPACE
     bool abstract_socket = false;
 #endif
@@ -881,6 +954,7 @@ int main(int argc, char * argv[])
 	case 't': notty_ok = true;    break;
 	case 'x': G.winsize_client = true; break;
 	case 'z': G.send_ctrl_z = true; break;
+	case 'L': list_sessions_mode = true; break;
 #if HAVE_ABSTRACT_SOCKET_NAMESPACE
 	case '@': abstract_socket = true; break;
 #endif
@@ -894,6 +968,12 @@ int main(int argc, char * argv[])
     dbg1(d, no_attach);
     dbg1(d, G.send_ctrl_z);
     dbg1(d, G.winsize_client);
+
+    if (list_sessions_mode) {
+	const char * sockname = argv[2];
+	if (sockname[0] == '\0') sockname = ".";
+	list_sessions(sockname OPTARG_ABSTRACT_SOCKET);
+    }
 
     if (no_attach) {
 	if (attach_only) die("Cannot do both 'a' and 'n'");

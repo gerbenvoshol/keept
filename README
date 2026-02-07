@@ -84,6 +84,12 @@ OPTIONS
 
     z:  when (re)attaching, send ctrl-z as first input
 
+    L:  list active sessions -- the socket argument is interpreted as a
+        directory path. keept will scan for socket files in that directory
+        and test each to see if it is an active keept session. Only live
+        sessions are displayed. This is useful for discovering what keept
+        sessions are currently running.
+
     @:  in system supporting "abstract socket namespace" (linux) bind/connect
         to socket in abstract socket namespace
 
@@ -151,6 +157,10 @@ ENVIRONMENT
 EXAMPLE
 
   keept bw a-socket zsh
+
+  keept L /tmp       # list active sessions in /tmp
+
+  keept L .          # list active sessions in current directory
 
 
 SEE ALSO
