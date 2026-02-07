@@ -30,6 +30,7 @@
 #include <time.h>
 #include <errno.h>
 #include <endian.h>
+#include <limits.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -890,7 +891,6 @@ static void list_sessions(const char * path BOOL_ABSTRACT_SOCKET)
 	exit(1);
     }
     
-    fprintf(stderr, "Active keept sessions:\n");
     int found = 0;
     
     struct dirent * entry;
@@ -898,7 +898,7 @@ static void list_sessions(const char * path BOOL_ABSTRACT_SOCKET)
 	if (entry->d_name[0] == '.') continue;
 	
 	// Build full path
-	char fullpath[4096];
+	char fullpath[PATH_MAX];
 	int len = snprintf(fullpath, sizeof fullpath, "%s/%s",
 			   search_dir, entry->d_name);
 	if (len >= (int)sizeof fullpath) continue;
@@ -910,6 +910,8 @@ static void list_sessions(const char * path BOOL_ABSTRACT_SOCKET)
 	// Try to connect to see if it's live
 	int s = connect_usock(fullpath OPTARG_ABSTRACT_SOCKET);
 	if (s >= 0) {
+	    if (found == 0)
+		fprintf(stderr, "Active keept sessions:\n");
 	    found++;
 	    fprintf(stderr, "  %s\n", fullpath);
 	    close(s);
@@ -919,7 +921,7 @@ static void list_sessions(const char * path BOOL_ABSTRACT_SOCKET)
     closedir(dir);
     
     if (found == 0)
-	fprintf(stderr, "  (no active sessions found)\n");
+	fprintf(stderr, "No active keept sessions found in '%s'\n", search_dir);
     
     exit(0);
 }
@@ -928,13 +930,25 @@ static void list_sessions(const char * path BOOL_ABSTRACT_SOCKET)
 
 int main(int argc, char * argv[])
 {
-    if (argc < 3) usage(argv[0], argc - 1); // 0 or 1, 1 for more information
+    bool list_sessions_mode = false;
+    
+    // Quick check for list mode which can work with just 2 args
+    if (argc >= 2) {
+	for (int i = 0; argv[1][i]; i++) {
+	    if (argv[1][i] == 'L') {
+		list_sessions_mode = true;
+		break;
+	    }
+	}
+    }
+    
+    if (argc < 3 && !list_sessions_mode) 
+	usage(argv[0], argc - 1); // 0 or 1, 1 for more information
 
     bool notty_ok = false;
     bool attach_only = false;
     bool no_attach = false;
     bool must_create = false;
-    bool list_sessions_mode = false;
 #if HAVE_ABSTRACT_SOCKET_NAMESPACE
     bool abstract_socket = false;
 #endif
@@ -970,8 +984,7 @@ int main(int argc, char * argv[])
     dbg1(d, G.winsize_client);
 
     if (list_sessions_mode) {
-	const char * sockname = argv[2];
-	if (sockname[0] == '\0') sockname = ".";
+	const char * sockname = (argc >= 3 && argv[2][0] != '\0') ? argv[2] : ".";
 	list_sessions(sockname OPTARG_ABSTRACT_SOCKET);
     }
 
