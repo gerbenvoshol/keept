@@ -106,6 +106,13 @@ file is initially unreadable (chmod 000) since e.g. cat(1)
 to the file would cause live loop and file filling up
 quickly
 .TP
+.BI "\-p " mode
+set socket permissions in octal mode (e.g., 777). This allows
+multiple users to connect to the same session by making the
+socket accessible. For example, use 777 for world-writable, or
+770 for group-writable access. By default, sockets are created
+with standard umask-based permissions.
+.TP
 .BR "\-h" ", " "\-\-help"
 display help message and exit
 .SH ARGUMENTS
@@ -157,6 +164,13 @@ list active sessions in /tmp
 .TP
 .B keept \-L .
 list active sessions in current directory
+.TP
+.B keept \-b \-w \-m \-p 777 /tmp/shared-session bash
+Create a session in a shared directory with world-writable permissions
+so other users can join
+.TP
+.B keept \-a /tmp/shared-session
+Attach to the shared session (as another user)
 .SH SEE ALSO
 .BR screen (1),
 .BR dtach (1),
