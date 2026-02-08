@@ -1095,7 +1095,7 @@ int main(int argc, char * argv[])
 	long l = strtol(socket_perms, &ep, 8);  // Parse as octal
 	if (errno) die("-p %s: invalid value", socket_perms);
 	if (l < 0) die("-p %s: value too small", socket_perms);
-	if (l > 0777) die("-p %s: value too large (max 777)", socket_perms);
+	if (l > 0777) die("-p %s: value too large (max 0777 octal)", socket_perms);
 	if (*ep != '\0') die("-p %s: trailing characters", socket_perms);
 	socket_mode = (mode_t)l;
     }
