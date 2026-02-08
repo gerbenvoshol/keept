@@ -11,7 +11,7 @@ KEEPT_OBJS = $(KEEPT_SRCS:%.c=%.o)
 # hint: make CFLAGS='-std=c99 -O2 -DDBG'
 CFLAGS = -std=c99 -O2
 
-all: keept.1 keept
+all: keept
 
 keept: $(KEEPT_OBJS) more-warnings.h $(MAKEFILE)
 	$(CC) -o $@ $(KEEPT_OBJS) -lutil
