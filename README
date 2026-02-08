@@ -6,7 +6,7 @@ NAME
 
 SYNOPSIS
 
-  keept FLAGS socket [OPTS] [NAME=VALUE]... [COMMAND [ARG]...]
+  keept [OPTIONS] socket [NAME=VALUE]... [COMMAND [ARG]...]
 
 
 DESCRIPTION
@@ -28,69 +28,75 @@ DESCRIPTION
 
 OPTIONS
 
-  KeePt tries to provide convenient command line interface to the users,
-  YMMV. To reach this SYNOPSIS is divided in 3 parts: flags, socket,
-  options and process command line arguments.
+  -a  attach only -- if COMMAND [ARG] were given, those are ignored. if
+      socket is not live, exit
 
-  FLAGS
-    Connection time redraw flags:
+  -n  execute COMMAND [ARG] but no attach. print failure if COMMAND [ARG]
+      is not given
 
-    q:   redraw mode is none -- when reconnecting to keept daemon don't request
-         anything to be done in this sense. window size does not change. this
-         option unsets all previosly given 'b', 'w' or 'l' options (if any)
+  -m  must create -- COMMAND [ARG] must be given and socket must not be
+      live when this flag is there
 
-    b:   redraw mode buffer -- request keept daemon to send the contents of
-         circular buffer that contains last output to client. with this flag
-         buffer size defaults to 1024, otherwise it is zero (0) (see -s below)
+  -r  "read only"; when attaching, terminal input is discarded by client
+      (and if daemon got it, it would also discard received input)
 
-    bw:  in addition to the above, client sends window size information and
-         if it differs what daemon thinks WINCH is sent to process (may be
-         useful e.g. for curl(1) to change width of the progress bar)
+  -x  instead of sending WINCH to resize process running under keept daemon
+      (attempt to) resize client terminal using common escape sequences
 
-    l:   redraw mode is ctrl-l: daemon writes ctrl-l to process and it responds
-         as it wishes (e.g. emacs will redraw its window). window size is
-         not changing (at this time)
+  -t  attach to the process under keept control even there is no local tty
 
-    lw:  if client and daemon agrees on window size, ctrl-l is sent, if not
-         WINCH is sent to the process
+  -z  when (re)attaching, send ctrl-z as first input
 
-    w:   WINCH is sent to the process (if terminal size changes)
+  -L  list active sessions -- the socket argument is interpreted as a
+      directory path. keept will scan for socket files in that directory
+      and test each to see if it is an active keept session. Only live
+      sessions are displayed. This is useful for discovering what keept
+      sessions are currently running.
 
-    Without any of the above, connection time redraw mode is what was given
-    when KeePt started, and if none was given at that time, 'lw' is used.
+  -u  keept daemon unlinks the pathname/filesystem socket when it exits.
+      effective only when daemon starts and executes given COMMAND [ARG]
 
-    The above flags affect how ctrl-l is handled from user input; if either
-    'l' or 'w' is active, window size will first be communicated to the daemon
-    -- and if size differs, WINCH is sent to the process.
+  Connection time redraw mode options:
 
-    Other flags:
+  -q  redraw mode is none -- when reconnecting to keept daemon don't request
+      anything to be done in this sense. window size does not change. this
+      option unsets all previosly given 'b', 'w' or 'l' options (if any)
 
-    a:  attach only -- if COMMAND [ARG] were given, those are ignored. if
-        socket is not live, exit
+  -b  redraw mode buffer -- request keept daemon to send the contents of
+      circular buffer that contains last output to client. with this flag
+      buffer size defaults to 1024, otherwise it is zero (0) (see -s below)
 
-    n:  execute COMMAND [ARG] but no attach. print failure if COMMAND [ARG]
-        is not given
+  -l  redraw mode is ctrl-l: daemon writes ctrl-l to process and it responds
+      as it wishes (e.g. emacs will redraw its window). window size is
+      not changing (at this time)
 
-    m:  must create -- COMMAND [ARG] must be given and socket must not be
-        live when this flag is there
+  -w  WINCH is sent to the process (if terminal size changes)
 
-    r:  "read only"; when attaching, terminal input is discarded by client
-        (and if daemon got it, it would also discard received input)
+  Without any of the redraw mode options, connection time redraw mode is 
+  what was given when KeePt started, and if none was given at that time, 
+  'lw' is used.
 
-    x:  instead of sending WINCH to resize process running under keept daemon
-        (attempt to) resize client terminal using common escape sequences
+  The redraw mode flags can be combined (e.g., -b -w for buffer+winch).
+  If both 'l' and 'w' are active, window size will first be communicated 
+  to the daemon -- and if size differs, WINCH is sent to the process.
 
-    t:  attach to the process under keept control even there is no local tty
+  -@  in system supporting "abstract socket namespace" (linux) bind/connect
+      to socket in abstract socket namespace
 
-    z:  when (re)attaching, send ctrl-z as first input
+  -s SIZE  circular buffer size. If 'b' is given, circular buffer size
+           defaults to 1024, otherwise w/o this, there will be no buffering
 
-    @:  in system supporting "abstract socket namespace" (linux) bind/connect
-        to socket in abstract socket namespace
+  -g ROWSxCOLS  instead of using current window size use the one given
+                with this argument. most useful when there is no tty
 
-    u:  keept daemon unlinks the pathname/filesystem socket when it exits.
-        effective only when daemon starts and executes given COMMAND [ARG]
+  -o FILE  do script(1) like logging to FILE (no buffering). the file is
+           initially unreadable (chmod 000) since e.g. cat(1) to the file
+           would cause live loop and file filling up quickly
 
-    -:  no-op -- provided for user convenience
+  -h, --help  display help message and exit
+
+
+ARGUMENTS
 
   socket
 
@@ -100,20 +106,6 @@ OPTIONS
 
     If filesystem socket exists and is not live, it is considerd as it did
     not exist at all (unlinked before rebinding).
-
-  OPTIONS
-
-    -s size:  circular buffer size. 1024 is 'b' is given in FLAGS, circular
-              buffer size defaults to 1024, otherwise w/o this, there will
-              be no buffering
-
-    -g {rows}x{cols}:  instead of using current window size use the one given
-                       with this argument. most useful when there is no tty
-
-    -o filename:  do script(1) like logging to filename (no buffering). the
-                  file is initially unreadable (chmod 000) since e.g. cat(1)
-                  to the file would cause live loop and file filling up
-                  quickly
 
   NAME=VALUE...
 
@@ -131,8 +123,8 @@ ESCAPE CHARARTER
   attached terminal. Currently there is no way to disable or change
   this character.
 
-  Ctrl-Z can be sent to process with 'z' flag in keept command line
-  (i.e. reattach after ctrl-z with 'z' in FLAGS argument).
+  Ctrl-Z can be sent to process with '-z' flag in keept command line
+  (i.e. reattach after ctrl-z with '-z' in options).
 
 
 ENVIRONMENT
@@ -150,7 +142,13 @@ ENVIRONMENT
 
 EXAMPLE
 
-  keept bw a-socket zsh
+  keept -b -w -m a-socket zsh
+
+  keept -a -r a-socket
+
+  keept -L /tmp       # list active sessions in /tmp
+
+  keept -L .          # list active sessions in current directory
 
 
 SEE ALSO

@@ -1,0 +1,44 @@
+=== KeePt - New Features Demo ===
+
+1. Standard getopt-style argument parsing:
+   Old syntax: keept bw socket-name command
+   New syntax: keept -b -w socket-name command
+
+2. Help output:
+   $ keept --help
+   
+   Usage: keept [OPTIONS] socket [NAME=VALUE]... [COMMAND [ARG]...]
+
+   Options:
+     -a              attach only
+     -n              no attach, just execute command
+     -m              must create
+     -b              redraw mode: 'buffer'
+     -w              redraw mode: 'winch'
+     -s SIZE         circular buffer size
+     -g ROWSxCOLS    initial window size
+     -o FILE         log output to FILE
+     -L              list sessions
+     -h, --help      display this help
+
+3. Create sessions:
+   $ keept -b -w -m session1 bash
+   $ keept -n -t session2 sleep 60
+
+4. List sessions:
+   $ keept -L .
+   Active keept sessions:
+     ./session1
+     ./session2
+
+5. Man page available:
+   $ man keept
+   KEEPT(1)                    User Commands                   KEEPT(1)
+
+   NAME
+       keept - keep pseudo terminal (with (multi) attach/detach)
+
+   SYNOPSIS
+       keept [OPTIONS] socket [NAME=VALUE]... [COMMAND [ARG]...]
+
+All features tested and working!

@@ -30,12 +30,14 @@
 #include <time.h>
 #include <errno.h>
 #include <endian.h>
+#include <limits.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/wait.h>
+#include <dirent.h>
 
 #include <sys/uio.h> // writev()
 #include <sys/ioctl.h>
@@ -111,40 +113,42 @@
 __attribute__((noreturn))
 static void usage(const char * prgname, int more)
 {
-    fprintf(stderr, "\nUsage: %s FLAGS socket "
-	    "[OPTS] [NAME=VALUE]... [COMMAND [ARG]...]\n\n", prgname);
+    fprintf(stderr, "\nUsage: %s [OPTIONS] socket [NAME=VALUE]... [COMMAND [ARG]...]\n\n", prgname);
     if (more)
 #define nl "\n"
 	fprintf(stderr,
-		"  flags:" nl
-		"     q: redraw mode: 'none'  (default: same as initially" nl
-		"     b: redraw mode: 'buffer' \\ given, 'wl' if no initial)" nl
-		"     l: redraw mode: 'ctrl-l' (both l and w: ctrl-l if win-" nl
-		"     w: redraw mode: 'winch'   \\ dow size does not change)" nl
-		"     a: attach only, command (if given) not executed" nl
-		"     n: no attach, just execute command" nl
-		"     m: must create, command to be executed" nl
-		"     r: read only attach" nl
-		"     x: resize attach window using escape sequence" nl
-		"     t: attach even without local tty (on fd 0)" nl
-		"     z: send ctrl-z when attaching" nl
+		"Options:" nl
+		"  -a              attach only, command (if given) not executed" nl
+		"  -n              no attach, just execute command" nl
+		"  -m              must create, command to be executed" nl
+		"  -r              read only attach" nl
+		"  -x              resize attach window using escape sequence" nl
+		"  -t              attach even without local tty (on fd 0)" nl
+		"  -z              send ctrl-z when attaching" nl
+		"  -L              list sessions (socket arg is directory path)" nl
+		"  -u              remove socket at the end" nl
+		"  -q              redraw mode: 'none'" nl
+		"  -b              redraw mode: 'buffer'" nl
+		"  -l              redraw mode: 'ctrl-l'" nl
+		"  -w              redraw mode: 'winch'" nl
+		"  -s SIZE         circular buffer size of latest output stored" nl
+		"  -g ROWSxCOLS    initial window size" nl
+		"  -o FILE         log output to FILE" nl
 #if HAVE_ABSTRACT_SOCKET_NAMESPACE
-		"     @: use socket in abstract namespace" nl
-		"     u: remove pathname socket at the end" nl
-#else
-		"     u: remove socket at the end" nl
+		"  -@              use socket in abstract namespace" nl
 #endif
-		"  options:" nl
-		"    -s size: circular buffer size of latest output stored" nl
-		"    -g {rows}x{cols}: initial window size" nl
-		"    -o filename: log output (unreadable until chmod(1)'d)" nl
+		"  -h, --help      display this help and exit" nl
+		nl
+		"Redraw mode flags can be combined (e.g., -b -w for buffer+winch)" nl
 		nl );
 #undef nl
     else
-	fprintf(stderr, "e.g.\n"
-		"  keept bm keept-sock -o keept-log /bin/sh\n"
-		"  keept ar keept-sock\n\n"
-		"Enter '%s help' for more information. \n\n", prgname);
+	fprintf(stderr, "Examples:\n"
+		"  keept -b -m keept-sock /bin/sh\n"
+		"  keept -a -r keept-sock\n"
+		"  keept -L .\n\n"
+		"Enter '%s help' or '%s --help' for more information.\n\n", 
+		prgname, prgname);
     exit(1);
 }
 
@@ -853,47 +857,155 @@ _exit:
     exit(0);
 }
 
+static void list_sessions(const char * path BOOL_ABSTRACT_SOCKET)
+{
+#if HAVE_ABSTRACT_SOCKET_NAMESPACE
+    if (abstract_socket) {
+	fprintf(stderr, "Listing abstract namespace sockets not supported\n");
+	exit(1);
+    }
+#endif
+    
+    // Check if path is a directory
+    struct stat st;
+    if (stat(path, &st) < 0) {
+	fprintf(stderr, "Cannot access '%s': %s\n", path, strerror(errno));
+	exit(1);
+    }
+    
+    DIR * dir;
+    const char * search_dir;
+    
+    if (S_ISDIR(st.st_mode)) {
+	dir = opendir(path);
+	search_dir = path;
+    } else {
+	// If not a directory, try parent directory
+	fprintf(stderr, "'%s' is not a directory\n", path);
+	exit(1);
+    }
+    
+    if (dir == null) {
+	fprintf(stderr, "Cannot open directory '%s': %s\n", 
+		search_dir, strerror(errno));
+	exit(1);
+    }
+    
+    int found = 0;
+    
+    struct dirent * entry;
+    while ((entry = readdir(dir)) != null) {
+	if (entry->d_name[0] == '.') continue;
+	
+	// Build full path
+	char fullpath[PATH_MAX];
+	int len = snprintf(fullpath, sizeof fullpath, "%s/%s",
+			   search_dir, entry->d_name);
+	if (len >= (int)sizeof fullpath) continue;
+	
+	// Check if it's a socket
+	if (stat(fullpath, &st) < 0) continue;
+	if (! S_ISSOCK(st.st_mode)) continue;
+	
+	// Try to connect to see if it's live
+	int s = connect_usock(fullpath OPTARG_ABSTRACT_SOCKET);
+	if (s >= 0) {
+	    if (found == 0)
+		fprintf(stderr, "Active keept sessions:\n");
+	    found++;
+	    fprintf(stderr, "  %s\n", fullpath);
+	    close(s);
+	}
+    }
+    
+    closedir(dir);
+    
+    if (found == 0)
+	fprintf(stderr, "No active keept sessions found in '%s'\n", search_dir);
+    
+    exit(0);
+}
+
+
 
 int main(int argc, char * argv[])
 {
-    if (argc < 3) usage(argv[0], argc - 1); // 0 or 1, 1 for more information
-
+    // Check for help first
+    if (argc >= 2 && (strcmp(argv[1], "help") == 0 || strcmp(argv[1], "--help") == 0)) {
+	usage(argv[0], 1);
+    }
+    
     bool notty_ok = false;
     bool attach_only = false;
     bool no_attach = false;
     bool must_create = false;
+    bool list_sessions_mode = false;
 #if HAVE_ABSTRACT_SOCKET_NAMESPACE
     bool abstract_socket = false;
 #endif
     bool remove_socket = false;
-    for (int c, i = 0; (c = argv[1][i]); i++) {
-	dbg1(c, c);
-	switch (c) {
-	case '-': break; // ignored
+    
+    const char * outfile = null;
+    const char * rbufsiz = null;
+    const char * geosize = null;
+    
+    // Use getopt for standard option parsing
+    int opt;
+    const char * optstring = "anmrxtzbwlqLus:g:o:"
+#if HAVE_ABSTRACT_SOCKET_NAMESPACE
+	"@"
+#endif
+	"h";
+    
+    while ((opt = getopt(argc, argv, optstring)) != -1) {
+	switch (opt) {
 	case 'a': attach_only = true; break;
-	case 'n': no_attach = true;   break;
+	case 'n': no_attach = true; break;
 	case 'm': must_create = true; break;
 	case 'r': G.read_only = true; break;
-	case 'q': G.redraw_mode = 1;  break; // none   \.
-	case 'b': G.redraw_mode |= 2; break; // buffer  \.
-	case 'l': G.redraw_mode |= 4; break; // ctrl-l   |- rest logic in serve
-	case 'w': G.redraw_mode |= 8; break; // winch   /'
-	case 't': notty_ok = true;    break;
 	case 'x': G.winsize_client = true; break;
+	case 't': notty_ok = true; break;
 	case 'z': G.send_ctrl_z = true; break;
+	case 'b': G.redraw_mode |= 2; break; // buffer
+	case 'w': G.redraw_mode |= 8; break; // winch
+	case 'l': G.redraw_mode |= 4; break; // ctrl-l
+	case 'q': G.redraw_mode = 1; break;  // none
+	case 'L': list_sessions_mode = true; break;
+	case 'u': remove_socket = true; break;
+	case 's': rbufsiz = optarg; break;
+	case 'g': geosize = optarg; break;
+	case 'o': outfile = optarg; break;
 #if HAVE_ABSTRACT_SOCKET_NAMESPACE
 	case '@': abstract_socket = true; break;
 #endif
-	case 'u': remove_socket = true; break;
+	case 'h':
+	    usage(argv[0], 1);
+	    break;
 	default:
-	    die("'%c': unknown flag", c);
+	    usage(argv[0], 0);
 	}
     }
+    
     dbg1(d, G.redraw_mode);
     dbg1(d, attach_only);
     dbg1(d, no_attach);
     dbg1(d, G.send_ctrl_z);
     dbg1(d, G.winsize_client);
+
+    // Socket name is first non-option argument
+    if (optind >= argc && !list_sessions_mode) {
+	fprintf(stderr, "Error: socket argument required\n");
+	usage(argv[0], 0);
+    }
+    
+    // Adjust argv/argc to point to remaining arguments
+    argv += optind;
+    argc -= optind;
+    
+    if (list_sessions_mode) {
+	const char * sockname = (argc >= 1 && argv[0][0] != '\0') ? argv[0] : ".";
+	list_sessions(sockname OPTARG_ABSTRACT_SOCKET);
+    }
 
     if (no_attach) {
 	if (attach_only) die("Cannot do both 'a' and 'n'");
@@ -918,40 +1030,15 @@ int main(int argc, char * argv[])
 	    exit(1);
 	}
     }
-    const char * sockname = argv[2];
+    
+    if (argc < 1) die("Socket argument required!");
+    const char * sockname = argv[0];
     if (sockname[0] == '\0') die("Zero-length socket name!");
 
     //die("as: %d, sockname: %s", abstract_socket, sockname); // test code
 
-    const char * outfile = null;
-    const char * rbufsiz = null;
-    const char * geosize = null;
-
-    argv += 3;
-    argc -= 3;
-
-    while (*argv) {
-	if (*argv[0] != '-') break;
-	const char * arg = *argv++; argc--;
-	if (arg[1] == '-' && arg[2] == '\0') break; // '--'
-	const char ** avref;
-	switch (arg[1]) {
-	case 'o': avref = &outfile; goto getargval;
-	case 's': avref = &rbufsiz; goto getargval;
-	case 'g': avref = &geosize; goto getargval;
-	default:
-	    die("'-%c': unknown option", arg[1]);
-	}
-	continue;
-    getargval:
-	if (arg[2] != '\0') {
-	    *avref = arg + 2;
-	    continue;
-	}
-	if (*argv == null)
-	    die("No value for option '%s'", arg);
-	*avref = *argv++; argc--;
-    }
+    argv++;
+    argc--;
 
     if (rbufsiz) {
 	errno = 0;

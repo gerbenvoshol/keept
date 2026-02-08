@@ -1,0 +1,171 @@
+.TH KEEPT 1 "2023-11-11" "keept 1.3" "User Commands"
+.SH NAME
+keept \- keep pseudo terminal (with (multi) attach/detach)
+.SH SYNOPSIS
+.B keept
+.RI [ OPTIONS ]
+.I socket
+.RI [ NAME = VALUE ]...
+.RI [ COMMAND
+.RI [ ARG ]...]
+.SH DESCRIPTION
+.B KeePt
+runs command under a separate pseudo terminal and keeps the master
+side open in a daemon process.
+.PP
+User may then (re)connect to this daemon process and get terminal access
+to the command running there.
+.PP
+The unix domain socket used to connect to the daemon process can accept
+multiple simultaneous connections and user may disconnect any of the
+connections at will.
+.PP
+This interface works pretty much like what dtach(1) provides, but the
+feature set is slightly different. abduco(1) is similar to these.
+screen(1) and tmux(1) are more versatile alternatives whenever needed.
+.SH OPTIONS
+.TP
+.B \-a
+attach only \(em if COMMAND [ARG] were given, those are ignored. if
+socket is not live, exit
+.TP
+.B \-n
+execute COMMAND [ARG] but no attach. print failure if COMMAND [ARG]
+is not given
+.TP
+.B \-m
+must create \(em COMMAND [ARG] must be given and socket must not be
+live when this flag is there
+.TP
+.B \-r
+"read only"; when attaching, terminal input is discarded by client
+(and if daemon got it, it would also discard received input)
+.TP
+.B \-x
+instead of sending WINCH to resize process running under keept daemon
+(attempt to) resize client terminal using common escape sequences
+.TP
+.B \-t
+attach to the process under keept control even there is no local tty
+.TP
+.B \-z
+when (re)attaching, send ctrl-z as first input
+.TP
+.B \-L
+list active sessions \(em the socket argument is interpreted as a
+directory path. keept will scan for socket files in that directory
+and test each to see if it is an active keept session. Only live
+sessions are displayed. This is useful for discovering what keept
+sessions are currently running.
+.TP
+.B \-u
+keept daemon unlinks the pathname/filesystem socket when it exits.
+effective only when daemon starts and executes given COMMAND [ARG]
+.TP
+.B \-q
+redraw mode is none \(em when reconnecting to keept daemon don't request
+anything to be done in this sense. window size does not change. this
+option unsets all previosly given 'b', 'w' or 'l' options (if any)
+.TP
+.B \-b
+redraw mode buffer \(em request keept daemon to send the contents of
+circular buffer that contains last output to client. with this flag
+buffer size defaults to 1024, otherwise it is zero (0) (see \-s below)
+.TP
+.B \-l
+redraw mode is ctrl-l: daemon writes ctrl-l to process and it responds
+as it wishes (e.g. emacs will redraw its window). window size is
+not changing (at this time)
+.TP
+.B \-w
+WINCH is sent to the process (if terminal size changes)
+.PP
+Without any of the redraw mode options, connection time redraw mode is what was given
+when KeePt started, and if none was given at that time, 'lw' is used.
+.PP
+The redraw mode flags can be combined (e.g., \-b \-w for buffer+winch).
+If both 'l' and 'w' are active, window size will first be communicated to the daemon
+\(em and if size differs, WINCH is sent to the process.
+.TP
+.B \-@
+in system supporting "abstract socket namespace" (linux) bind/connect
+to socket in abstract socket namespace
+.TP
+.BI "\-s " size
+circular buffer size. If 'b' redraw mode is given, circular
+buffer size defaults to 1024, otherwise w/o this, there will
+be no buffering
+.TP
+.BI "\-g " {rows}x{cols}
+instead of using current window size use the one given
+with this argument. most useful when there is no tty
+.TP
+.BI "\-o " filename
+do script(1) like logging to filename (no buffering). the
+file is initially unreadable (chmod 000) since e.g. cat(1)
+to the file would cause live loop and file filling up
+quickly
+.TP
+.BR "\-h" ", " "\-\-help"
+display help message and exit
+.SH ARGUMENTS
+.TP
+.I socket
+The socket name (filename or name in abstract socket namespace) what to
+bind by keept daemon or where to connect by keept client. Unix domain
+socket of SOCK_SEQPACKET type.
+.IP
+If filesystem socket exists and is not live, it is considerd as it did
+not exist at all (unlinked before rebinding).
+.TP
+.IR NAME = VALUE ...
+Set each NAME to VALUE in the environment (if any).
+.TP
+.IR COMMAND " [" ARG ...]
+The command (and its arguments) to be executed when the socket argument
+given is not available/live (and 'm' explicitly requests this).
+.SH ESCAPE CHARACTER
+The keept client detaches from keept daemon by entering Ctrl-Z on
+attached terminal. Currently there is no way to disable or change
+this character.
+.PP
+Ctrl-Z can be sent to process with '\-z' option in keept command line
+(i.e. reattach after ctrl-z with '\-z' flag).
+.SH ENVIRONMENT
+.B KeePt
+gets its environment from (grand)parent process, and process started
+by keept from keept.
+.TP
+.B KEEPT_PID
+is added to keept environment before it starts its child
+process. It is internally used by keept to avoid re-attaching
+keept socket, which would be problematic.
+.TP
+.B KEEPT_SOCKARG
+contains the value of socket argument verbatim. Users
+may find use for it...
+.SH EXAMPLES
+.TP
+.B keept \-b \-w \-m a-socket zsh
+Create a new session with buffer and winch redraw modes
+.TP
+.B keept \-a \-r a-socket
+Attach to existing session in read-only mode
+.TP
+.B keept \-L /tmp
+list active sessions in /tmp
+.TP
+.B keept \-L .
+list active sessions in current directory
+.SH SEE ALSO
+.BR screen (1),
+.BR dtach (1),
+.BR tmux (1),
+.BR abduco (1),
+.BR script (1)
+.SH BUGS
+No known ones, but some things are unresolvable.
+.SH AUTHOR
+Tomi Ollila <tomi.ollila@iki.fi>
+.SH LICENSE
+2-Clause (Simplified) BSD license. See LICENSE file for details.
