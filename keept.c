@@ -134,6 +134,7 @@ static void usage(const char * prgname, int more)
 		"  -s SIZE         circular buffer size of latest output stored" nl
 		"  -g ROWSxCOLS    initial window size" nl
 		"  -o FILE         log output to FILE" nl
+		"  -p MODE         set socket permissions (octal, e.g., 777)" nl
 #if HAVE_ABSTRACT_SOCKET_NAMESPACE
 		"  -@              use socket in abstract namespace" nl
 #endif
@@ -231,7 +232,7 @@ static int populate_uaddr(struct sockaddr_un * uaddr,
     return sun_len(pl PLUS_ABSTRACT_SOCKET);
 }
 
-static int bind_usock(const char * path BOOL_ABSTRACT_SOCKET)
+static int bind_usock(const char * path BOOL_ABSTRACT_SOCKET, mode_t sock_mode)
 {
     struct sockaddr_un addr = { .sun_family = AF_UNIX };
     int alen = populate_uaddr(&addr, path OPTARG_ABSTRACT_SOCKET);
@@ -242,6 +243,20 @@ static int bind_usock(const char * path BOOL_ABSTRACT_SOCKET)
 	close(s);
 	return -e;
     }
+    
+    // Set socket permissions if not using abstract namespace
+#if HAVE_ABSTRACT_SOCKET_NAMESPACE
+    if (!abstract_socket && sock_mode != 0) {
+#else
+    if (sock_mode != 0) {
+#endif
+	if (chmod(path, sock_mode) < 0) {
+	    int e = errno;
+	    close(s);
+	    return -e;
+	}
+    }
+    
     if (listen(s, 5) < 0) die("listen():");
     return s;
 }
@@ -948,10 +963,12 @@ int main(int argc, char * argv[])
     const char * outfile = null;
     const char * rbufsiz = null;
     const char * geosize = null;
+    const char * socket_perms = null;
+    mode_t socket_mode = 0;
     
     // Use getopt for standard option parsing
     int opt;
-    const char * optstring = "anmrxtzbwlqLus:g:o:"
+    const char * optstring = "anmrxtzbwlqLus:g:o:p:"
 #if HAVE_ABSTRACT_SOCKET_NAMESPACE
 	"@"
 #endif
@@ -975,6 +992,7 @@ int main(int argc, char * argv[])
 	case 's': rbufsiz = optarg; break;
 	case 'g': geosize = optarg; break;
 	case 'o': outfile = optarg; break;
+	case 'p': socket_perms = optarg; break;
 #if HAVE_ABSTRACT_SOCKET_NAMESPACE
 	case '@': abstract_socket = true; break;
 #endif
@@ -1070,6 +1088,18 @@ int main(int argc, char * argv[])
 	if (*ep != '\0') die ("-g %s: trailing characters", geosize);
 	G.rows = l;
     }
+    
+    if (socket_perms) {
+	errno = 0;
+	char * ep;
+	long l = strtol(socket_perms, &ep, 8);  // Parse as octal
+	if (errno) die("-p %s: invalid value", socket_perms);
+	if (l < 0) die("-p %s: value too small", socket_perms);
+	if (l > 0777) die("-p %s: value too large (max 777)", socket_perms);
+	if (*ep != '\0') die("-p %s: trailing characters", socket_perms);
+	socket_mode = (mode_t)l;
+    }
+    
     if (argc == 0 && must_create) die("Command (and args) missing");
 
     dbgf("-- argc: %d outfile: %s\n", argc, outfile);
@@ -1130,7 +1160,7 @@ int main(int argc, char * argv[])
 	G.sockname_to_be_removed = sockname;
 	atexit(unlink_socket);
     }
-    s = bind_usock(sockname OPTARG_ABSTRACT_SOCKET);
+    s = bind_usock(sockname OPTARG_ABSTRACT_SOCKET, socket_mode);
     if (s < 0) {
 	errno = -s;
 	die("Binding socket failed:");
