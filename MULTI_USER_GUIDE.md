@@ -87,7 +87,7 @@ keept -L .
 
 - **Directory Permissions**: Users must have execute permission on all parent directories in the socket path.
 
-- **Default Permissions**: Without `-p`, sockets inherit the process's umask (typically 775).
+- **Default Permissions**: Without `-p`, sockets are created with permissions determined by the process's umask. For example, with a typical umask of 022, sockets will have permissions of 755 (rwxr-xr-x).
 
 ## Troubleshooting
 

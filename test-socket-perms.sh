@@ -5,6 +5,10 @@ set -e
 
 echo "Testing socket permissions functionality..."
 
+# Set a known umask for predictable test results
+OLD_UMASK=$(umask)
+umask 002  # This should result in 775 permissions
+
 # Clean up test directory
 TEST_DIR="/tmp/keept-test-perms-$$"
 rm -rf "$TEST_DIR"
@@ -19,6 +23,8 @@ cleanup() {
     # Wait a moment for cleanup
     sleep 1
     rm -rf "$TEST_DIR"
+    # Restore original umask
+    umask "$OLD_UMASK"
 }
 
 trap cleanup EXIT
@@ -40,14 +46,15 @@ wait_for_socket() {
     fi
 }
 
-echo "1. Test default permissions (no -p flag)"
+echo "1. Test default permissions (no -p flag, with umask 002)"
 ./keept -n -t -b -w -m "$TEST_DIR/default-socket" bash -c "sleep 5" &
 wait_for_socket "$TEST_DIR/default-socket"
 PERMS=$(stat -c "%a" "$TEST_DIR/default-socket" 2>/dev/null || echo "missing")
-if [ "$PERMS" = "775" ] || [ "$PERMS" = "755" ]; then
+EXPECTED_PERMS="775"  # With umask 002, expect 775
+if [ "$PERMS" = "$EXPECTED_PERMS" ]; then
     echo "  ✓ Default permissions test passed (permissions: $PERMS)"
 else
-    echo "  ✗ Default permissions test failed (expected 775 or 755, got: $PERMS)"
+    echo "  ✗ Default permissions test failed (expected $EXPECTED_PERMS, got: $PERMS)"
     exit 1
 fi
 
